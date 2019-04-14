@@ -12,7 +12,7 @@ dependencies = {
 	 "k-stream ~> 0.1",
 	 "lua-cjson ~> 2.1",
 	 "luaposix ~> 34.0",
-	 "struct ~> 1.4",
+	 -- "struct ~> 1.4", -- Optional
 }
 build = {
    type = "builtin",
