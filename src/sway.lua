@@ -7,6 +7,9 @@ local M = require 'posix.sys.socket'
 local unistd = require 'posix.unistd'
 local poll = require 'posix.poll'
 
+-- 5.1 shim
+local struct = require 'struct'
+
 -- local class = require 'class'
 local function class(init)
   local c = {}    -- a new class instance
@@ -99,7 +102,8 @@ Sway.COMMANDS = SWAY_COMMAND
 Sway.EVENTS = SWAY_EVENTS
 
 function Sway.formatIpc(command_type, payload)
-  return "i3-ipc"..string.pack("=i4=i4", #payload, command_type)..payload
+  -- return "i3-ipc"..string.pack("=i4=i4", #payload, command_type)..payload
+  return "i3-ipc"..struct.pack("i4i4", #payload, command_type)..payload
 end
 
 function Sway:send(command)
@@ -112,8 +116,10 @@ function Sway:tryReceive()
     return nil
   end
   assert(start_string == "i3-ipc")
-  local payload_length = string.unpack("=i4", M.recv(self.socket, 4))
-  local payload_type = string.unpack("=I4", M.recv(self.socket, 4))
+  -- local payload_length = string.unpack("=i4", M.recv(self.socket, 4))
+  -- local payload_type = string.unpack("=I4", M.recv(self.socket, 4))
+  local payload_length = struct.unpack("i4", M.recv(self.socket, 4))
+  local payload_type = struct.unpack("I4", M.recv(self.socket, 4))
   local payload = M.recv(self.socket, payload_length)
   return json.decode(payload), payload_type
 end

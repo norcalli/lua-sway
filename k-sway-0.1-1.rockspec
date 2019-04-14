@@ -11,7 +11,8 @@ dependencies = {
    "lua >= 5.1, < 5.4",
 	 "k-stream ~> 0.1",
 	 "lua-cjson ~> 2.1",
-	 "luaposix ~> 34.0"
+	 "luaposix ~> 34.0",
+	 "struct ~> 1.4",
 }
 build = {
    type = "builtin",
