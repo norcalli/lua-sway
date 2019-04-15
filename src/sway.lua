@@ -125,6 +125,7 @@ function Sway:tryReceive(payload_types)
     for j = 1, #payload_types do
       if pair[2] == payload_types[j] then
         -- print("EXISTING PAYLOAD")
+        table.remove(self.payloads, i)
         return unpack(pair)
       end
     end
