@@ -1,4 +1,5 @@
 #!/usr/bin/env lua
+-- vim:expandtab shiftwidth=2
 
 local Stream = require 'Stream'
 local cjson = require 'cjson'
@@ -10,10 +11,10 @@ local poll = require 'posix.poll'
 local lua_version = _VERSION:sub(-3)
 
 if lua_version < "5.3" then
-	-- 5.1-5.2 shim
-	local struct = require 'struct'
-	string.pack = struct.pack
-	string.unpack = struct.unpack
+  -- 5.1-5.2 shim
+  local struct = require 'struct'
+  string.pack = struct.pack
+  string.unpack = struct.unpack
 end
 
 
@@ -90,7 +91,7 @@ function Sway.connect(SWAYSOCK)
   SWAYSOCK = SWAYSOCK or guessSwaysock()
   local self = Sway.__new()
 
-	self.payloads = {}
+  self.payloads = {}
   self.socket = assert(M.socket(M.AF_UNIX, M.SOCK_STREAM, 0))
   M.connect(self.socket, {family=M.AF_UNIX, path=SWAYSOCK})
 
@@ -118,16 +119,16 @@ function Sway:send(command)
 end
 
 function Sway:tryReceive(payload_types)
-	-- print("REQUEST", cjson.encode(payload_types))
-	-- print("stashed", #self.payloads)
-	for i, pair in ipairs(self.payloads) do
-		for j = 1, #payload_types do
-			if pair[2] == payload_types[j] then
-				-- print("EXISTING PAYLOAD")
-				return unpack(pair)
-			end
-		end
-	end
+  -- print("REQUEST", cjson.encode(payload_types))
+  -- print("stashed", #self.payloads)
+  for i, pair in ipairs(self.payloads) do
+    for j = 1, #payload_types do
+      if pair[2] == payload_types[j] then
+        -- print("EXISTING PAYLOAD")
+        return unpack(pair)
+      end
+    end
+  end
   local start_string = M.recv(self.socket, #"i3-ipc")
   if start_string == nil or #start_string == 0 then
     return nil
@@ -136,30 +137,30 @@ function Sway:tryReceive(payload_types)
   local payload_length = string.unpack("i4", M.recv(self.socket, 4))
   local payload_type = string.unpack("I4", M.recv(self.socket, 4))
   local payload = M.recv(self.socket, payload_length)
-	local decoded = cjson.decode(payload)
-	-- print("NEW", payload_type, payload)
-	for i = 1, #payload_types do
-		if payload_type == payload_types[i] then
-			-- print("RETURNING PAYLOAD")
-			return decoded, payload_type
-		end
-	end
-	-- print("STASHING PAYLOAD", cjson.encode(payload_types), payload_type)
-	table.insert(self.payloads, { decoded, payload_type, })
-	return nil
+  local decoded = cjson.decode(payload)
+  -- print("NEW", payload_type, payload)
+  for i = 1, #payload_types do
+    if payload_type == payload_types[i] then
+      -- print("RETURNING PAYLOAD")
+      return decoded, payload_type
+    end
+  end
+  -- print("STASHING PAYLOAD", cjson.encode(payload_types), payload_type)
+  table.insert(self.payloads, { decoded, payload_type, })
+  return nil
 end
 
 function Sway:receive(payload_types)
   local result = self:tryReceive(payload_types)
-	while result == nil do
-		result = self:tryReceive(payload_types)
-	end
-	return result
+  while result == nil do
+    result = self:tryReceive(payload_types)
+  end
+  return result
 end
 
 function Sway:ipc(command_type, payload)
   self:send(Sway.formatIpc(command_type, payload))
-	return self:receive({command_type})
+  return self:receive({command_type})
 end
 
 function Sway:jsonIpc(command_type, payload)
@@ -229,11 +230,11 @@ end
 function Sway:subscribe(events, timeout)
   assert(events and #events > 0, "must specify events to subscribe to.")
   local filtered_events = {}
-	local payload_types = {}
+  local payload_types = {}
   for _, v in ipairs(events) do
     if SWAY_EVENTS[v] then
       table.insert(filtered_events, v)
-			table.insert(payload_types, SWAY_EVENTS[v])
+      table.insert(payload_types, SWAY_EVENTS[v])
     end
   end
   assert(#filtered_events > 0, "No valid events found")
@@ -241,7 +242,7 @@ function Sway:subscribe(events, timeout)
   return Stream.fromFunction(function()
     assert(self:jsonIpc(SWAY_COMMAND.SUBSCRIBE, filtered_events).success, "Failed to subscribe")
     while true do
-			coroutine.yield(self:receive(payload_types))
+      coroutine.yield(self:receive(payload_types))
     end
   end)
 end
