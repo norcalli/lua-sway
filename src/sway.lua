@@ -1,7 +1,7 @@
 #!/usr/bin/env lua
 
 local Stream = require 'Stream'
-local json = require 'cjson'
+local cjson = require 'cjson'
 
 local M = require 'posix.sys.socket'
 local unistd = require 'posix.unistd'
@@ -47,6 +47,34 @@ end
 
 local Sway = class()
 
+local SWAY_COMMAND = {
+  RUN_COMMAND       = 0,
+  GET_WORKSPACES    = 1,
+  SUBSCRIBE         = 2,
+  GET_OUTPUTS       = 3,
+  GET_TREE          = 4,
+  GET_MARKS         = 5,
+  GET_BAR_CONFIG    = 6,
+  GET_VERSION       = 7,
+  GET_BINDING_MODES = 8,
+  GET_CONFIG        = 9,
+  SEND_TICK         = 10,
+}
+
+local SWAY_EVENTS = {
+  workspace         = 0x80000000,
+  mode              = 0x80000002,
+  window            = 0x80000003,
+  barconfig_update  = 0x80000004,
+  binding           = 0x80000005,
+  shutdown          = 0x80000006,
+  tick              = 0x80000007,
+  bar_status_update = 0x80000014,
+}
+
+Sway.COMMANDS = SWAY_COMMAND
+Sway.EVENTS = SWAY_EVENTS
+
 local function guessSwaysock()
   local sockpath = os.getenv("SWAYSOCK")
   if not sockpath then
@@ -62,6 +90,7 @@ function Sway.connect(SWAYSOCK)
   SWAYSOCK = SWAYSOCK or guessSwaysock()
   local self = Sway.__new()
 
+	self.payloads = {}
   self.socket = assert(M.socket(M.AF_UNIX, M.SOCK_STREAM, 0))
   M.connect(self.socket, {family=M.AF_UNIX, path=SWAYSOCK})
 
@@ -80,34 +109,6 @@ end
 
 Sway.init = Sway.connect
 
-local SWAY_COMMAND = {
-  RUN_COMMAND = 0,
-  GET_WORKSPACES = 1,
-  SUBSCRIBE = 2,
-  GET_OUTPUTS = 3,
-  GET_TREE = 4,
-  GET_MARKS = 5,
-  GET_BAR_CONFIG = 6,
-  GET_VERSION = 7,
-  GET_BINDING_MODES = 8,
-  GET_CONFIG = 9,
-  SEND_TICK = 10,
-}
-
-local SWAY_EVENTS = {
-  workspace = 0x80000000,
-  mode = 0x80000002,
-  window = 0x80000003,
-  barconfig_update = 0x80000004,
-  binding = 0x80000005,
-  shutdown = 0x80000006,
-  tick = 0x80000007,
-  bar_status_update = 0x80000014,
-}
-
-Sway.COMMANDS = SWAY_COMMAND
-Sway.EVENTS = SWAY_EVENTS
-
 function Sway.formatIpc(command_type, payload)
   return "i3-ipc"..string.pack("i4i4", #payload, command_type)..payload
 end
@@ -116,7 +117,17 @@ function Sway:send(command)
   return M.send(self.socket, command)
 end
 
-function Sway:tryReceive()
+function Sway:tryReceive(payload_types)
+	-- print("REQUEST", cjson.encode(payload_types))
+	-- print("stashed", #self.payloads)
+	for i, pair in ipairs(self.payloads) do
+		for j = 1, #payload_types do
+			if pair[2] == payload_types[j] then
+				-- print("EXISTING PAYLOAD")
+				return unpack(pair)
+			end
+		end
+	end
   local start_string = M.recv(self.socket, #"i3-ipc")
   if start_string == nil or #start_string == 0 then
     return nil
@@ -125,20 +136,34 @@ function Sway:tryReceive()
   local payload_length = string.unpack("i4", M.recv(self.socket, 4))
   local payload_type = string.unpack("I4", M.recv(self.socket, 4))
   local payload = M.recv(self.socket, payload_length)
-  return json.decode(payload), payload_type
+	local decoded = cjson.decode(payload)
+	-- print("NEW", payload_type, payload)
+	for i = 1, #payload_types do
+		if payload_type == payload_types[i] then
+			-- print("RETURNING PAYLOAD")
+			return decoded, payload_type
+		end
+	end
+	-- print("STASHING PAYLOAD", cjson.encode(payload_types), payload_type)
+	table.insert(self.payloads, { decoded, payload_type, })
+	return nil
 end
 
-function Sway:rawIpc(command)
-  self:send(command)
-  return self:tryReceive()
+function Sway:receive(payload_types)
+  local result = self:tryReceive(payload_types)
+	while result == nil do
+		result = self:tryReceive(payload_types)
+	end
+	return result
 end
 
 function Sway:ipc(command_type, payload)
-  return self:rawIpc(Sway.formatIpc(command_type, payload))
+  self:send(Sway.formatIpc(command_type, payload))
+	return self:receive({command_type})
 end
 
 function Sway:jsonIpc(command_type, payload)
-  return self:ipc(command_type, json.encode(payload))
+  return self:ipc(command_type, cjson.encode(payload))
 end
 
 function Sway:msg(...)
@@ -171,7 +196,7 @@ function Sway.eventName(number)
 end
 
 -- Pass through cjson's null for convenience
-Sway.null = json.null
+Sway.null = cjson.null
 
 function Sway:getTree()
   return self:ipc(SWAY_COMMAND.GET_TREE, "")
@@ -204,9 +229,11 @@ end
 function Sway:subscribe(events, timeout)
   assert(events and #events > 0, "must specify events to subscribe to.")
   local filtered_events = {}
+	local payload_types = {}
   for _, v in ipairs(events) do
     if SWAY_EVENTS[v] then
       table.insert(filtered_events, v)
+			table.insert(payload_types, SWAY_EVENTS[v])
     end
   end
   assert(#filtered_events > 0, "No valid events found")
@@ -214,10 +241,7 @@ function Sway:subscribe(events, timeout)
   return Stream.fromFunction(function()
     assert(self:jsonIpc(SWAY_COMMAND.SUBSCRIBE, filtered_events).success, "Failed to subscribe")
     while true do
-      local ready = poll.rpoll(self.socket, timeout)
-      if ready == 1 then
-        coroutine.yield(self:tryReceive())
-      end
+			coroutine.yield(self:receive(payload_types))
     end
   end)
 end

@@ -1,8 +1,7 @@
 package = "k-sway"
-version = "0.1-1"
+version = "dev-0"
 source = {
    url = "git://github.com/norcalli/lua-sway";
-	 tag = "k-sway-v0.1-1";
 }
 description = {
    homepage = "https://github.com/norcalli/lua-sway";
