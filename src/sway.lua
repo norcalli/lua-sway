@@ -168,8 +168,12 @@ function Sway:jsonIpc(command_type, payload)
   return self:ipc(command_type, cjson.encode(payload))
 end
 
-function Sway:msg(...)
-  local command = table.concat({...}, ";")
+function Sway:msg(commands)
+	local escaped = {}
+  for i, command in ipairs(commands) do
+    escaped[i] = command:gsub("%f[;\\];", "\\;")
+  end
+  local command = table.concat(escaped, ";")
   return self:ipc(SWAY_COMMAND.RUN_COMMAND, command)
 end
 
